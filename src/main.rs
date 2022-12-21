@@ -35,8 +35,6 @@ fn main() {
 
     let aspect_ratio = (window.inner_size().width / window.inner_size().height) as f32;
 
-    let dirt = image::load_from_memory(include_bytes!("../dirt.png")).unwrap();
-
     let mut camera =
         Camera::new_projection(Vec3::new(0.0, 0.0, 1.0), 75.0, aspect_ratio, 0.001, 100.0);
 
@@ -44,7 +42,7 @@ fn main() {
 
     let mut state = State::new();
 
-    let mut renderer = Renderer::new(&window, dirt, &camera);
+    let mut renderer = Renderer::new(&window, &camera);
 
     let textures = vec![
         ("dirt".into(), load_tex("dirt")),

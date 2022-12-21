@@ -71,7 +71,6 @@ pub struct Renderer {
     vertices_length: u32,
     indices_length: u32,
     camera_bg: wgpu::BindGroup,
-    texture_bg: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
     depth_texture: Texture,
     objects: FxHashMap<Object, Vec<[f32; 16]>>,
@@ -81,10 +80,11 @@ pub struct Renderer {
     sampler: wgpu::Sampler,
     texture_atlas_bg: wgpu::BindGroup,
     texture_atlas_extend: wgpu::Extent3d,
+    texture_atlas_bgl: wgpu::BindGroupLayout,
 }
 
 impl Renderer {
-    pub fn new(window: &winit::window::Window, tex: DynamicImage, camera: &Camera) -> Self {
+    pub fn new(window: &winit::window::Window, camera: &Camera) -> Self {
         let base = Self::init(window);
 
         let module = base
@@ -130,39 +130,7 @@ impl Renderer {
             }],
         });
 
-        let texture_size = wgpu::Extent3d {
-            width: tex.width(),
-            height: tex.height(),
-            depth_or_array_layers: 1,
-        };
-
-        let texture = base.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Dirt texture"),
-            size: texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        });
-
-        base.queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &tex.to_rgba8(),
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * tex.dimensions().0),
-                rows_per_image: std::num::NonZeroU32::new(tex.dimensions().1),
-            },
-            texture_size,
-        );
-
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        // let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let sampler = base.device.create_sampler(&wgpu::SamplerDescriptor {
             // address_mode_u: wgpu::AddressMode::Repeat,
@@ -194,7 +162,47 @@ impl Renderer {
                     },
                 ],
             });
-        let texture_bg = base.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        // let texture_bg = base.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     label: Some("Texture bind group"),
+        //     layout: &texture_bgl,
+        //     entries: &[
+        //         wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: wgpu::BindingResource::TextureView(&texture_view),
+        //         },
+        //         wgpu::BindGroupEntry {
+        //             binding: 1,
+        //             resource: wgpu::BindingResource::Sampler(&sampler),
+        //         },
+        //     ],
+        // });
+
+        // let texture_atlas_buffer = base.device.create_buffer(&wgpu::BufferDescriptor {
+        //     label: Some("Texture atlas buffer"),
+        //     size: 0,
+        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        //     mapped_at_creation: false,
+        // });
+
+        let texture_size = wgpu::Extent3d {
+            width: 512,
+            height: 512,
+            depth_or_array_layers: 1,
+        };
+
+        let texture_atlas_tex = base.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Texture atlas texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        });
+
+        let texture_view = texture_atlas_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let texture_atlas_bg = base.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Texture bind group"),
             layout: &texture_bgl,
             entries: &[
@@ -277,88 +285,19 @@ impl Renderer {
                 usage: wgpu::BufferUsages::INDEX,
             });
 
-        // let instance_data = [
-        //     Instance::new(
-        //         vec3(0.0, 0.0, 0.0),
-        //         Quat::from_euler(glam::EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //     )
-        //     .raw(),
-        //     Instance::new(
-        //         vec3(1.0, 0.0, 0.0),
-        //         Quat::from_euler(glam::EulerRot::XYZ, 0.0, 0.0, 0.0),
-        //     )
-        //     .raw(),
-        //     Instance::new(
-        //         vec3(3.0, 1.0, 0.0),
-        //         Quat::from_euler(glam::EulerRot::XYZ, PI / 2.0, PI / 4.0, PI / 4.0),
-        //     )
-        //     .raw(),
-        // ];
-
-        // let instances = base
-        //     .device
-        //     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //         label: Some("Instance buffer"),
-        //         contents: bytemuck::cast_slice(&instance_data),
-        //         usage: wgpu::BufferUsages::VERTEX,
-        //     });
-
         let depth_texture = texture::Texture::create_depth_texture(
             &base.device,
             &Self::get_surface_config(&base.adapter, window, &base.surface),
         );
 
-        let texture_atlas_buffer = base.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Texture atlas buffer"),
-            size: 0,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let texture_size = wgpu::Extent3d {
-            width: 512,
-            height: 512,
-            depth_or_array_layers: 1,
-        };
-
-        let texture_atlas_tex = base.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Texture atlas texture"),
-            size: texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        });
-
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let texture_atlas_bg = base.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Texture bind group"),
-            layout: &texture_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
-
         Self {
             base,
             pipeline,
             camera_bg,
-            texture_bg,
             vertices,
             indices,
-            // instances,
             vertices_length: vertices_data.len() as u32,
             indices_length: indices_data.len() as u32,
-            // instances_length: instance_data.len() as u32,
             camera_buffer,
             depth_texture,
             objects: FxHashMap::default(),
@@ -368,6 +307,7 @@ impl Renderer {
             sampler,
             texture_atlas_bg,
             texture_atlas_extend: texture_size,
+            texture_atlas_bgl: texture_bgl,
         }
     }
 
@@ -490,6 +430,30 @@ impl Renderer {
                 self.texture_atlas_extend,
             );
         }
+
+        // recreate the view
+        let texture_view = self
+            .texture_atlas_tex
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // recreate the bg
+        self.texture_atlas_bg = self
+            .base
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Texture bind group"),
+                layout: &self.texture_atlas_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            });
     }
 
     fn create_object(&self, v: Vec<u8>, i: Vec<u8>, indices_length: usize) -> Object {
