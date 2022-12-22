@@ -537,7 +537,13 @@ impl Renderer {
     pub fn draw(&mut self) {
         let instance_buffer = self.base.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Instance buffer"),
-            size: std::mem::size_of::<RenderInstance>() as u64 * 32 * 32 * 32, // bytes - what's a reasonable limit?
+            size: std::mem::size_of::<RenderInstance>() as u64
+                * self
+                    .objects
+                    .values()
+                    .max_by(|a, b| a.len().cmp(&b.len()))
+                    .unwrap()
+                    .len() as u64, // bytes - what's a reasonable limit?
             // what's the most instances of something we might need to draw?
             // keep in mind - all blocks will potentially be of the same instance (e.g. 1 draw call)
             // suppose a render distance of 100 blocks in each direction

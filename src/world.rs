@@ -1,6 +1,7 @@
 use fxhash::FxHashMap;
 use glam::{vec3, Quat, Vec3};
 use image::DynamicImage;
+use noise::{NoiseFn, Perlin};
 
 use crate::{
     instance::Instance,
@@ -170,15 +171,20 @@ pub struct World {
 
 impl World {
     pub fn new() -> Self {
+        let p = Perlin::new(1);
         let mut blocks = vec![];
-        for x in 0..32 {
-            for y in 0..32 {
+        for x in 0..64 {
+            for y in 0..64 {
                 for z in 0..32 {
-                    blocks.push(Block {
-                        position: vec3(x as f32, -5. - z as f32, y as f32),
-                        rotation: Quat::default(),
-                        block_type: BlockType::random(),
-                    })
+                    let val = p.get([x as f64 / 32.0, y as f64 / 32.0, z as f64 / 32.0]);
+                    println!("{val}");
+                    if val > 0.0 {
+                        blocks.push(Block {
+                            position: vec3(x as f32, -5. - z as f32, y as f32),
+                            rotation: Quat::default(),
+                            block_type: BlockType::random(),
+                        });
+                    }
                 }
             }
         }
