@@ -27,9 +27,11 @@ impl BlockType {
 impl From<f32> for BlockType {
     fn from(f: f32) -> BlockType {
         match f {
-            x if (0.0..0.33).contains(&x) => BlockType::Dirt,
-            x if (0.33..0.66).contains(&x) => BlockType::Cobble,
-            x if (0.66..1.0).contains(&x) => BlockType::Sand,
+            x if (0.0..0.2).contains(&x) => BlockType::Dirt,
+            x if (0.2..0.4).contains(&x) => BlockType::Cobble,
+            x if (0.4..0.6).contains(&x) => BlockType::Sand,
+            x if (0.6..0.8).contains(&x) => BlockType::Stone,
+            x if (0.8..1.0).contains(&x) => BlockType::Water,
             _ => BlockType::Dirt,
         }
     }

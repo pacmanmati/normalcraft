@@ -5,7 +5,7 @@ use crate::texture::TextureHandle;
 pub struct Instance {
     position: Vec3,
     rotation: Quat,
-    texture: TextureHandle,
+    pub texture: TextureHandle,
 }
 
 impl Instance {

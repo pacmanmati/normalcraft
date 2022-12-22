@@ -1,8 +1,7 @@
-use std::{borrow::Borrow, f32::consts::PI};
+use std::borrow::Borrow;
 
 use bytemuck::{Pod, Zeroable};
 use fxhash::FxHashMap;
-use glam::{vec3, Quat};
 use image::{DynamicImage, GenericImage, GenericImageView, RgbaImage};
 use wgpu::{
     util::DeviceExt, vertex_attr_array, Adapter, DepthBiasState, DepthStencilState, StencilState,
@@ -12,7 +11,7 @@ use winit::window::Window;
 
 use crate::{
     camera::Camera,
-    instance::{self, Instance},
+    instance::{self},
     texture::{self, Texture, TextureAtlas, TextureHandle},
     world::World,
 };
@@ -53,6 +52,14 @@ impl PartialEq for Object {
 }
 impl Eq for Object {}
 
+#[repr(C)]
+#[derive(Pod, Zeroable, Clone, Copy)]
+struct RenderInstance {
+    raw: [f32; 16],
+    tex_offset: [f32; 2],
+    tex_size: [f32; 2],
+}
+
 #[allow(dead_code)]
 pub struct RendererBase {
     instance: wgpu::Instance,
@@ -73,7 +80,7 @@ pub struct Renderer {
     camera_bg: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
     depth_texture: Texture,
-    objects: FxHashMap<Object, Vec<[f32; 16]>>,
+    objects: FxHashMap<Object, Vec<RenderInstance>>,
     texture_atlas: TextureAtlas,
     textures: FxHashMap<TextureHandle, DynamicImage>,
     texture_atlas_tex: wgpu::Texture,
@@ -239,9 +246,9 @@ impl Renderer {
                             attributes: &vertex_attr_array![0 => Float32x3, 1 => Float32x2],
                         },
                         wgpu::VertexBufferLayout {
-                            array_stride: std::mem::size_of::<[f32; 16]>() as u64,
+                            array_stride: std::mem::size_of::<RenderInstance>() as u64,
                             step_mode: wgpu::VertexStepMode::Instance,
-                            attributes: &vertex_attr_array![2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4],
+                            attributes: &vertex_attr_array![2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x2, 7 => Float32x2],
                         },
                     ],
                 },
@@ -466,7 +473,7 @@ impl Renderer {
         }
     }
 
-    fn register_object(&mut self, mut object: Object, instance: Option<Instance>) {
+    fn register_object(&mut self, mut object: Object, instance: Option<RenderInstance>) {
         let vertices = self
             .base
             .device
@@ -488,7 +495,7 @@ impl Renderer {
         self.objects.insert(
             object,
             if let Some(instance) = instance {
-                vec![instance.raw()]
+                vec![instance]
             } else {
                 vec![]
             },
@@ -503,13 +510,24 @@ impl Renderer {
         let v_data: Vec<u8> = bytemuck::cast_slice(&drawable.vertices()).to_vec();
         let i_data: Vec<u8> = bytemuck::cast_slice(&drawable.indices()).to_vec();
         let object = self.create_object(v_data, i_data, drawable.indices().len());
+        let instance = drawable.instance(world);
+        let rect = self
+            .texture_atlas
+            .get_rect(&instance.texture)
+            .unwrap_or_else(|| panic!("No rect found for texture with handle {}", instance.texture))
+            .0;
+        let render_instance = RenderInstance {
+            raw: instance.raw(),
+            tex_offset: [rect.x as f32, rect.y as f32],
+            tex_size: [rect.w as f32, rect.h as f32],
+        };
         if !self.objects.contains_key(&object) {
             // register this object
-            self.register_object(object, Some(drawable.instance(world)));
+            self.register_object(object, Some(render_instance));
         } else {
             let v = self.objects.get_mut(&object);
             if let Some(instances) = v {
-                instances.push(drawable.instance(world).raw());
+                instances.push(render_instance);
             } else {
                 panic!("Expected to find Object in Renderer.")
             }
@@ -519,7 +537,7 @@ impl Renderer {
     pub fn draw(&mut self) {
         let instance_buffer = self.base.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Instance buffer"),
-            size: 64 * 32 * 32 * 32, // bytes - what's a reasonable limit?
+            size: std::mem::size_of::<RenderInstance>() as u64 * 32 * 32 * 32, // bytes - what's a reasonable limit?
             // what's the most instances of something we might need to draw?
             // keep in mind - all blocks will potentially be of the same instance (e.g. 1 draw call)
             // suppose a render distance of 100 blocks in each direction
