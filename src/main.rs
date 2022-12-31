@@ -38,20 +38,26 @@ fn main() {
     let aspect_ratio = (window.inner_size().width / window.inner_size().height) as f32;
 
     let mut camera =
-        Camera::new_projection(Vec3::new(0.0, 0.0, 0.0), 75.0, aspect_ratio, 0.1, 1000.0);
+        Camera::new_projection(Vec3::new(0.0, 0.0, 0.0), 90.0, aspect_ratio, 0.1, 1000.0);
 
     let mut input_state = InputState::new();
 
     let mut state = State::new();
 
-    let font = Font::new("Roboto/Roboto-Regular.ttf", 150);
+    let font = Font::new("Roboto/Roboto-Regular.ttf", 120);
 
     let mut renderer = Renderer::new(&window, &camera);
     renderer.init_text_pipeline();
 
     let font_handle = renderer.register_font(font);
 
-    let text_mesh = renderer.create_text_mesh("debug text", font_handle, 100.0, 100.0, 0.5);
+    let text_mesh = renderer.create_text_mesh("MNOPQRSTUVWXYZ", font_handle, 0.0, 50.0, 0.5);
+    renderer.queue_draw_text_mesh(text_mesh);
+    let text_mesh = renderer.create_text_mesh("ABCDEFGHIJKL", font_handle, 0.0, 150.0, 0.5);
+    renderer.queue_draw_text_mesh(text_mesh);
+    let text_mesh = renderer.create_text_mesh("mnopqrstuvwxyz", font_handle, 0.0, 250.0, 0.5);
+    renderer.queue_draw_text_mesh(text_mesh);
+    let text_mesh = renderer.create_text_mesh("abcdefghijkl", font_handle, 0.0, 350.0, 0.5);
     renderer.queue_draw_text_mesh(text_mesh);
 
     let textures = vec![

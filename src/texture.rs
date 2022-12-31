@@ -71,7 +71,17 @@ impl TextureAtlas {
         let mut max_h = self.rects.first().unwrap().0.h;
         for (rect, _) in self.rects.iter_mut() {
             // bounds check
-            if x + rect.x + rect.h > self.width {
+            if rect.w == 149 && rect.h == 108 {
+                println!("this one!");
+            }
+            println!(
+                "{x}, {}, {}, {}, {}",
+                rect.x,
+                rect.h,
+                self.width,
+                x + rect.x + rect.w >= self.width
+            );
+            if x + rect.x + rect.w >= self.width {
                 y += max_h;
                 x = 0;
                 max_h = rect.h;
