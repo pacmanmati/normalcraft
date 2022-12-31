@@ -197,10 +197,5 @@ impl State {
             .normalize_or_zero()
                 * speed,
         );
-        // println!("moving: {}", movement);
     }
 }
-
-// fn main() {
-//     engine::app::App::new().window_size((600.0, 600.0));
-// }

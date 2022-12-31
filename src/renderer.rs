@@ -611,58 +611,36 @@ impl Renderer {
             let h = metrics.size.y as f32 * scale;
             let vertices = [
                 TextVertex {
-                    // position: [current_width, metrics.bearing.y as f32 * scale, 0.0],
                     position: [xpos, ypos + h],
                     uv: [
                         rect.x as f32 / font.atlas.width as f32,
                         rect.y as f32 / font.atlas.height as f32,
-                        // 0.0, 0.0,
                     ],
                 },
                 TextVertex {
-                    // position: [
-                    //     current_width + rect.w as f32 * scale,
-                    //     metrics.bearing.y as f32 * scale,
-                    //     0.0,
-                    // ],
                     position: [xpos + w, ypos + h],
                     uv: [
                         (rect.x as f32 + rect.w as f32) / font.atlas.width as f32,
                         rect.y as f32 / font.atlas.height as f32,
-                        // 1.0, 0.0,
                     ],
                 },
                 TextVertex {
-                    // position: [
-                    //     current_width,
-                    //     (metrics.bearing.y as f32 - rect.h as f32) * scale,
-                    //     0.0,
-                    // ],
                     position: [xpos, ypos],
                     uv: [
                         rect.x as f32 / font.atlas.width as f32,
                         (rect.y as f32 + rect.h as f32) / font.atlas.height as f32,
-                        // 0.0, 1.0,
                     ],
                 },
                 TextVertex {
-                    // position: [
-                    //     current_width + rect.w as f32 * scale,
-                    //     (metrics.bearing.y as f32 - rect.h as f32) * scale,
-                    //     0.0,
-                    // ],
                     position: [xpos + w, ypos],
                     uv: [
                         (rect.x as f32 + rect.w as f32) / font.atlas.width as f32,
                         (rect.y as f32 + rect.h as f32) / font.atlas.height as f32,
-                        // 1.0, 1.0,
                     ],
                 },
             ];
-            // current_width += (rect.w as f32 + (metrics.advance >> 6) as f32) * scale;
             current_width += (metrics.advance >> 6) as f32 * scale;
 
-            // current_width += 0.2;
             let start = vertex_data.len() as u16;
             let indices = [start, start + 2, start + 3, start, start + 3, start + 1];
             println!("char {char}, rect {rect:?},\nvertices: {vertices:?},\nindices: {indices:?}");

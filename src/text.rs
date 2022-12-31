@@ -31,11 +31,8 @@ impl Font {
         let lib = Library::init().unwrap();
         // load the ttf font at the specified path
         let face = lib.new_face(path, 0).unwrap();
-        // let scale = 2;
         face.set_pixel_sizes(0, px)
             .unwrap_or_else(|err| panic!("{err}"));
-        // face.set_char_size(40 * 64 * scale, 0, 50 * scale as u32, 0)
-        //     .unwrap_or_else(|err| panic!("{err}"));
         // initialise an atlas for all glyphs, store an index of char -> TextureHandle
         let mut atlas = TextureAtlas::new();
         let mut bitmaps = vec![];
