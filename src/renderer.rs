@@ -1,20 +1,35 @@
-use std::borrow::Borrow;
-
 use bytemuck::{Pod, Zeroable};
 use fxhash::FxHashMap;
+use glam::vec3;
 use image::{DynamicImage, GenericImage, GenericImageView, RgbaImage};
 use wgpu::{
-    util::DeviceExt, vertex_attr_array, Adapter, DepthBiasState, DepthStencilState, StencilState,
-    Surface, SurfaceConfiguration,
+    util::{BufferInitDescriptor, DeviceExt},
+    vertex_attr_array, Adapter, DepthBiasState, DepthStencilState, FragmentState, StencilState,
+    Surface, SurfaceConfiguration, VertexState,
 };
 use winit::window::Window;
 
 use crate::{
     camera::Camera,
-    instance::{self},
+    instance,
+    text::Font,
     texture::{self, Texture, TextureAtlas, TextureHandle},
     world::World,
 };
+
+pub struct TextMesh {
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
+    font_handle: FontHandle,
+}
+
+#[repr(C)]
+#[derive(Pod, Clone, Copy, Zeroable, Debug)]
+pub struct TextVertex {
+    position: [f32; 2],
+    uv: [f32; 2],
+}
 
 pub fn v(x: f32, y: f32, z: f32, u: f32, v: f32) -> Vertex {
     Vertex {
@@ -60,6 +75,8 @@ struct RenderInstance {
     tex_size: [f32; 2],
 }
 
+type FontHandle = u32;
+
 #[allow(dead_code)]
 pub struct RendererBase {
     instance: wgpu::Instance,
@@ -67,6 +84,13 @@ pub struct RendererBase {
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+}
+
+struct TextModule {
+    pipeline: wgpu::RenderPipeline,
+    bgl: wgpu::BindGroupLayout,
+    text_meshes: FxHashMap<FontHandle, Vec<TextMesh>>,
+    camera_bg: wgpu::BindGroup,
 }
 
 #[allow(dead_code)]
@@ -88,6 +112,9 @@ pub struct Renderer {
     texture_atlas_bg: wgpu::BindGroup,
     texture_atlas_extend: wgpu::Extent3d,
     texture_atlas_bgl: wgpu::BindGroupLayout,
+    font_count: u32,
+    fonts: Vec<(Font, wgpu::BindGroup)>,
+    text_module: Option<TextModule>,
 }
 
 impl Renderer {
@@ -315,6 +342,9 @@ impl Renderer {
             texture_atlas_bg,
             texture_atlas_extend: texture_size,
             texture_atlas_bgl: texture_bgl,
+            font_count: 0,
+            fonts: vec![],
+            text_module: None,
         }
     }
 
@@ -361,9 +391,325 @@ impl Renderer {
         }
     }
 
+    pub fn init_text_pipeline(&mut self) {
+        let module = self
+            .base
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: None,
+                source: wgpu::ShaderSource::Wgsl(include_str!("text.wgsl").into()),
+            });
+
+        let camera =
+            Camera::new_orthographic(vec3(0.0, 0.0, 0.0), 0.0, 800.0, 0.0, 600.0, 0.0, 100.0);
+
+        let camera_buffer =
+            self.base
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Camera buffer"),
+                    contents: bytemuck::cast_slice(&camera.compute().to_cols_array()),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+
+        let camera_bgl =
+            self.base
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Camera bind group layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+
+        let camera_bg = self
+            .base
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Camera bind group"),
+                layout: &camera_bgl,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &camera_buffer,
+                        offset: 0,
+                        size: None,
+                    }),
+                }],
+            });
+
+        let font_texture_bgl =
+            self.base
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("font texture bind group layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
+                });
+
+        let text_pipeline_layout =
+            self.base
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Text pipeline layout"),
+                    bind_group_layouts: &[&camera_bgl, &font_texture_bgl],
+                    push_constant_ranges: &[],
+                });
+        let text_pipeline =
+            self.base
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("Text pipeline"),
+                    layout: Some(&text_pipeline_layout),
+                    vertex: VertexState {
+                        module: &module,
+                        entry_point: "vertex",
+                        buffers: &[wgpu::VertexBufferLayout {
+                            array_stride: std::mem::size_of::<TextVertex>() as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+                        }],
+                    },
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: Some(wgpu::Face::Back),
+                        ..Default::default()
+                    },
+                    // depth_stencil: None,
+                    depth_stencil: Some(DepthStencilState {
+                        format: texture::Texture::DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare: wgpu::CompareFunction::Always,
+                        stencil: StencilState::default(),
+                        bias: DepthBiasState::default(),
+                    }),
+
+                    multisample: wgpu::MultisampleState::default(),
+                    fragment: Some(FragmentState {
+                        module: &module,
+                        entry_point: "fragment",
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: self.base.surface.get_supported_formats(&self.base.adapter)[0],
+                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                            write_mask: wgpu::ColorWrites::all(),
+                        })],
+                    }),
+                    multiview: None,
+                });
+
+        self.text_module = Some(TextModule {
+            pipeline: text_pipeline,
+            bgl: font_texture_bgl,
+            text_meshes: FxHashMap::default(),
+            camera_bg,
+        })
+    }
+
+    pub fn register_font(&mut self, font: Font) -> FontHandle {
+        let handle = self.font_count;
+        self.font_count += 1;
+
+        let texture_size = wgpu::Extent3d {
+            width: font.atlas.width as u32,
+            height: font.atlas.height as u32,
+            depth_or_array_layers: 1,
+        };
+        let tex = self.base.device.create_texture_with_data(
+            &self.base.queue,
+            &wgpu::TextureDescriptor {
+                label: Some("Font texture atlas texture"),
+                size: texture_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            },
+            font.tex.as_bytes(),
+        );
+
+        let texture_view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let bind_group = self
+            .base
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Font texture bind group"),
+                layout: &self
+                    .text_module
+                    .as_ref()
+                    .expect("Expected text module to be initialised.")
+                    .bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&texture_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            });
+        self.fonts.push((font, bind_group));
+        handle
+    }
+
+    pub fn create_text_mesh(
+        &mut self,
+        text: &str,
+        font_handle: FontHandle,
+        x: f32,
+        y: f32,
+        scale: f32,
+    ) -> TextMesh {
+        // technically we want grapheme clusters, not unicode chars but we can worry about it later
+        let mut vertex_data: Vec<TextVertex> = vec![];
+        let mut index_data: Vec<u16> = vec![];
+        let mut current_width = -0.5;
+        for char in text.chars() {
+            let (font, _) = self.fonts.get(font_handle as usize).unwrap_or_else(|| {
+                panic!("Couldn't load font corresponding to handle {font_handle}.")
+            });
+            let rect = font.get_char_rect(char);
+            // v0----v1
+            // | \   |
+            // |  \  |
+            // |   \ |
+            // v2----v3
+            let metrics = font
+                .metrics
+                .get(&char)
+                .unwrap_or_else(|| panic!("Couldn't find metrics for character {char}."));
+            let xpos = x + current_width + metrics.bearing.x as f32 * scale;
+            let ypos = y - (metrics.size.y - metrics.bearing.y) as f32 * scale;
+            let w = metrics.size.x as f32 * scale;
+            let h = metrics.size.y as f32 * scale;
+            let vertices = [
+                TextVertex {
+                    // position: [current_width, metrics.bearing.y as f32 * scale, 0.0],
+                    position: [xpos, ypos + h],
+                    uv: [
+                        rect.x as f32 / font.atlas.width as f32,
+                        rect.y as f32 / font.atlas.height as f32,
+                        // 0.0, 0.0,
+                    ],
+                },
+                TextVertex {
+                    // position: [
+                    //     current_width + rect.w as f32 * scale,
+                    //     metrics.bearing.y as f32 * scale,
+                    //     0.0,
+                    // ],
+                    position: [xpos + w, ypos + h],
+                    uv: [
+                        (rect.x as f32 + rect.w as f32) / font.atlas.width as f32,
+                        rect.y as f32 / font.atlas.height as f32,
+                        // 1.0, 0.0,
+                    ],
+                },
+                TextVertex {
+                    // position: [
+                    //     current_width,
+                    //     (metrics.bearing.y as f32 - rect.h as f32) * scale,
+                    //     0.0,
+                    // ],
+                    position: [xpos, ypos],
+                    uv: [
+                        rect.x as f32 / font.atlas.width as f32,
+                        (rect.y as f32 + rect.h as f32) / font.atlas.height as f32,
+                        // 0.0, 1.0,
+                    ],
+                },
+                TextVertex {
+                    // position: [
+                    //     current_width + rect.w as f32 * scale,
+                    //     (metrics.bearing.y as f32 - rect.h as f32) * scale,
+                    //     0.0,
+                    // ],
+                    position: [xpos + w, ypos],
+                    uv: [
+                        (rect.x as f32 + rect.w as f32) / font.atlas.width as f32,
+                        (rect.y as f32 + rect.h as f32) / font.atlas.height as f32,
+                        // 1.0, 1.0,
+                    ],
+                },
+            ];
+            // current_width += (rect.w as f32 + (metrics.advance >> 6) as f32) * scale;
+            current_width += (metrics.advance >> 6) as f32 * scale;
+
+            // current_width += 0.2;
+            let start = vertex_data.len() as u16;
+            let indices = [start, start + 2, start + 3, start, start + 3, start + 1];
+            println!("char {char}, rect {rect:?},\nvertices: {vertices:?},\nindices: {indices:?}");
+
+            vertex_data.extend(vertices);
+            index_data.extend(indices);
+        }
+
+        assert!(vertex_data.len() / 4 == index_data.len() / 6);
+
+        let vertex_buffer = self.base.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Text vertex buffer"),
+            contents: bytemuck::cast_slice(&vertex_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = self.base.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Text index buffer"),
+            contents: bytemuck::cast_slice(&index_data),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+
+        TextMesh {
+            font_handle,
+            vertex_buffer,
+            index_buffer,
+            num_indices: index_data.len() as u32,
+        }
+    }
+
+    pub fn queue_draw_text_mesh(&mut self, text_mesh: TextMesh) {
+        let map = &mut self
+            .text_module
+            .as_mut()
+            .expect("Text module not initialised.")
+            .text_meshes;
+        if let Some(value) = map.get_mut(&text_mesh.font_handle) {
+            value.push(text_mesh)
+        } else {
+            map.insert(text_mesh.font_handle, vec![text_mesh]);
+        }
+    }
+
     pub fn register_texture(&mut self, texture: DynamicImage) -> TextureHandle {
-        let rect = texture.borrow().into();
-        let handle = self.texture_atlas.add(rect);
+        // let rect = texture.borrow().into();
+        let handle = self
+            .texture_atlas
+            .add(texture.width() as i32, texture.height() as i32);
         self.textures.insert(handle, texture);
         self.texture_atlas.pack();
         self.update_texture_buffer();
@@ -378,13 +724,13 @@ impl Renderer {
         // let pixel_size = std::mem::size_of::<[u8; 4]>();
 
         let mut mega_texture = DynamicImage::ImageRgba8(RgbaImage::new(
-            self.texture_atlas.width,
-            self.texture_atlas.height,
+            self.texture_atlas.width as u32,
+            self.texture_atlas.height as u32,
         ));
         self.textures.iter().for_each(|(handle, image)| {
             let (rect, _) = self.texture_atlas.get_rect(handle).unwrap();
             for (x, y, pixel) in image.pixels() {
-                mega_texture.put_pixel(x + rect.x, y + rect.y, pixel)
+                mega_texture.put_pixel(x + rect.x as u32, y + rect.y as u32, pixel)
             }
         });
         // self.texture_atlas;
@@ -397,8 +743,8 @@ impl Renderer {
         if tex_size >= size.try_into().unwrap() {
             // create a bigger buffer and write to it
             let texture_size = wgpu::Extent3d {
-                width: self.texture_atlas.width,
-                height: self.texture_atlas.height,
+                width: self.texture_atlas.width as u32,
+                height: self.texture_atlas.height as u32,
                 depth_or_array_layers: 1,
             };
             self.texture_atlas_extend = texture_size;
@@ -535,6 +881,16 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
+        // it looks like this feature isn't implemented in wgpu yet?
+        // let query_set = self
+        //     .base
+        //     .device
+        //     .create_query_set(&wgpu::QuerySetDescriptor {
+        //         label: Some("Occlusion Query"),
+        //         ty: wgpu::QueryType::Occlusion,
+        //         count: 1,
+        //     });
+
         let instance_buffer = self.base.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Instance buffer"),
             size: std::mem::size_of::<RenderInstance>() as u64
@@ -565,6 +921,7 @@ impl Renderer {
             .base
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -628,6 +985,27 @@ impl Renderer {
                 0..instances.len() as u32,
             );
             instances.clear();
+        }
+
+        if let Some(text_module) = &mut self.text_module {
+            rpass.set_pipeline(&text_module.pipeline);
+            rpass.set_bind_group(0, &text_module.camera_bg, &[]);
+
+            for (font_handle, meshes) in text_module.text_meshes.iter_mut() {
+                // bind the correct texture
+                let (_, bind_group) = self
+                    .fonts
+                    .get(*font_handle as usize)
+                    .expect("Couldn't find font.");
+                rpass.set_bind_group(1, bind_group, &[]);
+                for mesh in meshes.iter() {
+                    rpass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                    rpass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    rpass.draw_indexed(0..mesh.num_indices, 0, 0..1);
+                }
+            }
+            // rpass.set_bind_group(index, bind_group, offsets);
+            // for text_mesh in text_module.text_meshes.drain(..) {}
         }
 
         drop(rpass);

@@ -1,10 +1,11 @@
 use std::{collections::HashMap, time::Instant};
 
 use camera::Camera;
-use glam::{vec2, vec3, Vec3};
+use glam::{vec2, Vec3};
 use image::DynamicImage;
 use renderer::Renderer;
 
+use text::Font;
 use winit::{
     event::{DeviceEvent, ElementState, Event, VirtualKeyCode, WindowEvent},
     event_loop::EventLoop,
@@ -15,6 +16,7 @@ use world::World;
 mod camera;
 mod instance;
 mod renderer;
+mod text;
 mod texture;
 mod world;
 
@@ -36,13 +38,21 @@ fn main() {
     let aspect_ratio = (window.inner_size().width / window.inner_size().height) as f32;
 
     let mut camera =
-        Camera::new_projection(Vec3::new(0.0, 0.0, 1.0), 75.0, aspect_ratio, 0.001, 100.0);
+        Camera::new_projection(Vec3::new(0.0, 0.0, 0.0), 75.0, aspect_ratio, 0.1, 1000.0);
 
     let mut input_state = InputState::new();
 
     let mut state = State::new();
 
+    let font = Font::new("Roboto/Roboto-Regular.ttf", 150);
+
     let mut renderer = Renderer::new(&window, &camera);
+    renderer.init_text_pipeline();
+
+    let font_handle = renderer.register_font(font);
+
+    let text_mesh = renderer.create_text_mesh("debug text", font_handle, 100.0, 100.0, 0.5);
+    renderer.queue_draw_text_mesh(text_mesh);
 
     let textures = vec![
         ("dirt".into(), load_tex("dirt")),
@@ -90,7 +100,7 @@ fn main() {
                         .kbd_map
                         .insert("shift".into(), input.state == ElementState::Pressed),
                     _ => {
-                        println!("{:?}", input);
+                        // println!("{:?}", input);
                         None
                     }
                 };

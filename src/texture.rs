@@ -5,18 +5,18 @@ impl From<&DynamicImage> for Rect {
         Rect {
             x: 0,
             y: 0,
-            w: value.width(),
-            h: value.height(),
+            w: value.width() as i32,
+            h: value.height() as i32,
         }
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Rect {
-    pub x: u32,
-    pub y: u32,
-    pub w: u32,
-    pub h: u32,
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
 }
 
 impl Ord for Rect {
@@ -36,8 +36,8 @@ pub type TextureHandle = u32;
 pub struct TextureAtlas {
     counter: u32,
     rects: Vec<(Rect, TextureHandle)>,
-    pub width: u32,
-    pub height: u32,
+    pub width: i32,
+    pub height: i32,
 }
 
 impl TextureAtlas {
@@ -51,9 +51,10 @@ impl TextureAtlas {
         }
     }
 
-    pub fn add(&mut self, rect: Rect) -> TextureHandle {
+    pub fn add(&mut self, w: i32, h: i32) -> TextureHandle {
         let handle = self.counter;
         self.counter += 1;
+        let rect = Rect { x: 0, y: 0, w, h };
         self.rects.push((rect, handle));
         handle
     }
@@ -65,15 +66,15 @@ impl TextureAtlas {
         self.width = 512;
         // sort s.t. the tallest rect is first
         // decreasing rect height means we can place anything
-        self.rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        self.rects.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
         // self.rects.reverse();
-        let mut maxH = self.rects.first().unwrap().0.h;
+        let mut max_h = self.rects.first().unwrap().0.h;
         for (rect, _) in self.rects.iter_mut() {
             // bounds check
-            if rect.x + rect.h > self.width {
-                y += maxH;
+            if x + rect.x + rect.h > self.width {
+                y += max_h;
                 x = 0;
-                maxH = rect.h;
+                max_h = rect.h;
             }
             // place rect
             rect.x = x;
@@ -81,10 +82,11 @@ impl TextureAtlas {
             // move along
             x += rect.w;
         }
-        self.height = y + maxH;
+        self.height = y + max_h;
+        // println!("{}, {:?}", self.height, self.rects);
     }
 
-    pub fn get_rect(&mut self, handle: &TextureHandle) -> Option<(Rect, TextureHandle)> {
+    pub fn get_rect(&self, handle: &TextureHandle) -> Option<(Rect, TextureHandle)> {
         self.rects.iter().find(|(_, x)| x == handle).copied()
     }
 }

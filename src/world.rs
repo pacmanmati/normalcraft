@@ -9,8 +9,9 @@ use crate::{
     texture::TextureHandle,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum BlockType {
+    #[default]
     Dirt,
     Cobble,
     Stone,
@@ -135,6 +136,7 @@ pub fn cube_indices() -> Vec<u16> {
     ]
 }
 
+#[derive(Default, Clone, Copy)]
 pub struct Block {
     position: Vec3,
     rotation: Quat,
@@ -165,6 +167,7 @@ impl Drawable for Block {
 
 // the world will consist of blocks and entities
 pub struct World {
+    // pub blocks: [[[Option<Block>; 64]; 64]; 64],
     pub blocks: Vec<Block>,
     pub textures: FxHashMap<String, TextureHandle>,
 }
@@ -172,12 +175,13 @@ pub struct World {
 impl World {
     pub fn new() -> Self {
         let p = Perlin::new(1);
+        // let mut blocks = [[[None; 64]; 64]; 64];
         let mut blocks = vec![];
-        for x in 0..64 {
-            for y in 0..64 {
-                for z in 0..32 {
-                    let val = p.get([x as f64 / 32.0, y as f64 / 32.0, z as f64 / 32.0]);
-                    println!("{val}");
+        for x in -16..16 {
+            for y in -16..16 {
+                for z in -16..16 {
+                    let val = p.get([x as f64 / 16.0, y as f64 / 16.0, z as f64 / 16.0]);
+                    // println!("{val}");
                     if val > 0.0 {
                         blocks.push(Block {
                             position: vec3(x as f32, -5. - z as f32, y as f32),
@@ -191,6 +195,34 @@ impl World {
         Self {
             blocks,
             textures: FxHashMap::default(),
+        }
+    }
+
+    // method as described here: https://tomcc.github.io/2014/08/31/visibility-1.html
+    fn chunk_floodfill(&self, x: i32, y: i32, z: i32, chunk_size: i32) -> u16 {
+        // compute which pairs of faces are visible within the chunk using a 3d floodfill
+        // we can later use this information to determine whether we can see from one chunk into another
+        // we represent this using 15 bits
+        // there are 6 faces in a chunk so 6*5/2=15 pairs (avoiding duplicates)
+        let faces = 0_u16;
+
+        faces
+    }
+
+    // perform an occlusion check on loaded blocks to determine which blocks are visible.
+    // method as described here: https://tomcc.github.io/2014/08/31/visibility-2.html
+    pub fn occlusion(&mut self) {
+        let chunk_size = 16;
+        let mut visibility_grid: [[[u16; 10]; 10]; 10] = [[[0_u16; 10]; 10]; 10];
+        // let's do a 10x10x10 area of chunks around the player for now
+        // we don't need to recompute this unless the blocks change
+        for x in -5..5 {
+            for y in -5..5 {
+                for z in -5..5 {
+                    visibility_grid[x as usize][y as usize][z as usize] =
+                        self.chunk_floodfill(x, y, z, chunk_size);
+                }
+            }
         }
     }
 
@@ -217,6 +249,8 @@ impl World {
     }
 
     pub fn draw(&self, renderer: &mut Renderer) {
-        self.blocks.iter().for_each(|x| x.draw(renderer, self));
+        self.blocks
+            .iter()
+            .for_each(|block| block.draw(renderer, self));
     }
 }

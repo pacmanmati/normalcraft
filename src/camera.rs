@@ -198,7 +198,7 @@ impl Camera {
             .pitch
             .clamp(-89.0_f32.to_radians(), 89.0_f32.to_radians());
         self.yaw += other.x;
-        println!("{}, {}", self.pitch, self.yaw);
+        // println!("{}, {}", self.pitch, self.yaw);
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>, resize_strategy: ResizeStrategy) {
