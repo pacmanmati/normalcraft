@@ -609,34 +609,35 @@ impl Renderer {
             let ypos = y - (metrics.size.y - metrics.bearing.y) as f32 * scale;
             let w = metrics.size.x as f32 * scale;
             let h = metrics.size.y as f32 * scale;
-            let uv_width = font.atlas.width as f32 - 1.0;
-            let uv_height = font.atlas.height as f32 - 1.0;
+            let uv_width = font.atlas.width as f32;
+            let uv_height = font.atlas.height as f32;
+
             let vertices = [
                 TextVertex {
                     position: [xpos, ypos + h],
                     uv: [rect.x as f32 / uv_width, rect.y as f32 / uv_height],
-                },
+                }, // v0
                 TextVertex {
                     position: [xpos + w, ypos + h],
                     uv: [
                         (rect.x as f32 + rect.w as f32) / uv_width,
                         rect.y as f32 / uv_height,
                     ],
-                },
+                }, // v1
                 TextVertex {
                     position: [xpos, ypos],
                     uv: [
                         rect.x as f32 / uv_width,
                         (rect.y as f32 + rect.h as f32) / uv_height,
                     ],
-                },
+                }, // v2
                 TextVertex {
                     position: [xpos + w, ypos],
                     uv: [
                         (rect.x as f32 + rect.w as f32) / uv_width,
                         (rect.y as f32 + rect.h as f32) / uv_height,
                     ],
-                },
+                }, // v3
             ];
             current_width += (metrics.advance >> 6) as f32 * scale;
 

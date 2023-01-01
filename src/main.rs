@@ -44,20 +44,20 @@ fn main() {
 
     let mut state = State::new();
 
-    let font = Font::new("Roboto/Roboto-Regular.ttf", 120);
+    let font = Font::new("Roboto/Roboto-Regular.ttf", 230);
 
     let mut renderer = Renderer::new(&window, &camera);
     renderer.init_text_pipeline();
 
     let font_handle = renderer.register_font(font);
 
-    let text_mesh = renderer.create_text_mesh("MNOPQRSTUVWXYZ", font_handle, 0.0, 50.0, 0.5);
+    let text_mesh = renderer.create_text_mesh("MNOPQRSTUVWXYZ", font_handle, 0.0, 50.0, 0.35);
     renderer.queue_draw_text_mesh(text_mesh);
-    let text_mesh = renderer.create_text_mesh("ABCDEFGHIJKL", font_handle, 0.0, 150.0, 0.5);
+    let text_mesh = renderer.create_text_mesh("ABCDEFGHIJKL", font_handle, 0.0, 150.0, 0.35);
     renderer.queue_draw_text_mesh(text_mesh);
-    let text_mesh = renderer.create_text_mesh("mnopqrstuvwxyz", font_handle, 0.0, 250.0, 0.5);
+    let text_mesh = renderer.create_text_mesh("mnopqrstuvwxyz", font_handle, 0.0, 250.0, 0.35);
     renderer.queue_draw_text_mesh(text_mesh);
-    let text_mesh = renderer.create_text_mesh("abcdefghijkl", font_handle, 0.0, 350.0, 0.5);
+    let text_mesh = renderer.create_text_mesh("abcdefghijkl", font_handle, 0.0, 350.0, 0.35);
     renderer.queue_draw_text_mesh(text_mesh);
 
     let textures = vec![
