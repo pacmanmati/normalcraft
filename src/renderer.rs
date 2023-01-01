@@ -643,7 +643,7 @@ impl Renderer {
 
             let start = vertex_data.len() as u16;
             let indices = [start, start + 2, start + 3, start, start + 3, start + 1];
-            println!("char {char}, rect {rect:?},\nvertices: {vertices:?},\nindices: {indices:?}");
+            // println!("char {char}, rect {rect:?},\nvertices: {vertices:?},\nindices: {indices:?}");
 
             vertex_data.extend(vertices);
             index_data.extend(indices);
@@ -744,7 +744,7 @@ impl Renderer {
             //     });
         } else {
             // update the buffer
-            println!("tex_size: {tex_size}, ");
+            // println!("tex_size: {tex_size}, ");
             self.base.queue.write_texture(
                 wgpu::ImageCopyTexture {
                     texture: &self.texture_atlas_tex,

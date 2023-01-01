@@ -79,7 +79,7 @@ impl Font {
             );
             let mut row = 0;
             let mut col = 0;
-            println!("rect: {rect:?}");
+            // println!("rect: {rect:?}");
             for pixel in bitmap {
                 if col >= rect.w {
                     col = 0;
