@@ -46,6 +46,7 @@ pub struct Vertex {
 }
 
 struct Object {
+    id: u32,
     vertex_data: Vec<u8>,
     index_data: Vec<u8>,
     vertex_buffer: Option<wgpu::Buffer>,
@@ -55,14 +56,13 @@ struct Object {
 
 impl std::hash::Hash for Object {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.vertex_data.hash(state);
-        self.index_data.hash(state);
+        self.id.hash(state);
     }
 }
 
 impl PartialEq for Object {
     fn eq(&self, other: &Self) -> bool {
-        self.vertex_data == other.vertex_data && self.index_data == other.index_data
+        self.id == other.id
     }
 }
 impl Eq for Object {}
@@ -95,6 +95,7 @@ struct TextModule {
 
 #[allow(dead_code)]
 pub struct Renderer {
+    num_objects: u32,
     base: RendererBase,
     pipeline: wgpu::RenderPipeline,
     vertices: wgpu::Buffer,
@@ -115,6 +116,7 @@ pub struct Renderer {
     font_count: u32,
     fonts: Vec<(Font, wgpu::BindGroup)>,
     text_module: Option<TextModule>,
+    instance_buffer: Option<wgpu::Buffer>,
 }
 
 impl Renderer {
@@ -325,6 +327,7 @@ impl Renderer {
         );
 
         Self {
+            num_objects: 0,
             base,
             pipeline,
             camera_bg,
@@ -345,6 +348,7 @@ impl Renderer {
             font_count: 0,
             fonts: vec![],
             text_module: None,
+            instance_buffer: None,
         }
     }
 
@@ -499,7 +503,6 @@ impl Renderer {
                         cull_mode: Some(wgpu::Face::Back),
                         ..Default::default()
                     },
-                    // depth_stencil: None,
                     depth_stencil: Some(DepthStencilState {
                         format: texture::Texture::DEPTH_FORMAT,
                         depth_write_enabled: true,
@@ -787,8 +790,9 @@ impl Renderer {
             });
     }
 
-    fn create_object(&self, v: Vec<u8>, i: Vec<u8>, indices_length: usize) -> Object {
+    fn create_object(&mut self, v: Vec<u8>, i: Vec<u8>, indices_length: usize) -> Object {
         Object {
+            id: self.num_objects,
             vertex_data: v,
             index_data: i,
             vertex_buffer: None,
@@ -826,7 +830,7 @@ impl Renderer {
         );
     }
 
-    pub fn queue_draw(&mut self, drawable: &dyn Drawable, world: &World) {
+    pub fn queue_draw(&mut self, drawable: &impl Drawable, world: &World) {
         // println!("{}", self.objects.keys().len());
 
         // compare vertex and index data against what we already have to allow efficient drawing
@@ -859,35 +863,24 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
-        // it looks like this feature isn't implemented in wgpu yet?
-        // let query_set = self
-        //     .base
-        //     .device
-        //     .create_query_set(&wgpu::QuerySetDescriptor {
-        //         label: Some("Occlusion Query"),
-        //         ty: wgpu::QueryType::Occlusion,
-        //         count: 1,
-        //     });
+        if self.instance_buffer.is_none() {
+            self.instance_buffer = Some(
+                self.base.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Instance buffer"),
+                    size: std::mem::size_of::<RenderInstance>() as u64
+                        * self
+                            .objects
+                            .values()
+                            .max_by(|a, b| a.len().cmp(&b.len()))
+                            .unwrap()
+                            .len() as u64,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+            );
+        }
 
-        let instance_buffer = self.base.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Instance buffer"),
-            size: std::mem::size_of::<RenderInstance>() as u64
-                * self
-                    .objects
-                    .values()
-                    .max_by(|a, b| a.len().cmp(&b.len()))
-                    .unwrap()
-                    .len() as u64, // bytes - what's a reasonable limit?
-            // what's the most instances of something we might need to draw?
-            // keep in mind - all blocks will potentially be of the same instance (e.g. 1 draw call)
-            // suppose a render distance of 100 blocks in each direction
-            // 100 - you - 100
-            // 200 * 200 * 200 * 64 = 512_000_000 bytes which is a 512mb on the gpu.
-            // we could probably go 2x that and still work on most hardware?
-            // we could also compute the size of buffer required quite easily and implement logic to split it up if necessary
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let instance_buffer = self.instance_buffer.as_ref().unwrap();
 
         let frame = self.base.surface.get_current_texture().unwrap();
 

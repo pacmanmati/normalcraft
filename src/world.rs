@@ -141,6 +141,7 @@ pub struct Block {
     position: Vec3,
     rotation: Quat,
     block_type: BlockType,
+    visible: bool,
 }
 
 // drawing one individual instance makes little sense...
@@ -177,9 +178,9 @@ impl World {
         let p = Perlin::new(1);
         // let mut blocks = [[[None; 64]; 64]; 64];
         let mut blocks = vec![];
-        for x in -16..16 {
-            for y in -16..16 {
-                for z in -16..16 {
+        for x in -32..32 {
+            for y in -32..32 {
+                for z in -32..32 {
                     let val = p.get([x as f64 / 16.0, y as f64 / 16.0, z as f64 / 16.0]);
                     // println!("{val}");
                     if val > 0.0 {
@@ -187,6 +188,7 @@ impl World {
                             position: vec3(x as f32, -5. - z as f32, y as f32),
                             rotation: Quat::default(),
                             block_type: BlockType::random(),
+                            visible: false,
                         });
                     }
                 }
@@ -195,6 +197,17 @@ impl World {
         Self {
             blocks,
             textures: FxHashMap::default(),
+        }
+    }
+
+    // for each block, check if there's any air blocks next to it
+    // if so mark it as visible
+    fn visibility_floodfill(&self) {
+        let sz = 32;
+        for x in 0..sz {
+            for y in 0..sz {
+                for z in 0..sz {}
+            }
         }
     }
 
