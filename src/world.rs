@@ -149,7 +149,7 @@ pub struct Block {
 // allowing us to bind buffers once and do only 1 draw call
 impl Drawable for Block {
     fn draw(&self, renderer: &mut Renderer, world: &World) {
-        renderer.queue_draw(self, world);
+        renderer.queue_draw(0, self, world);
     }
     fn vertices(&self) -> Vec<Vertex> {
         cube_vertices()
@@ -178,9 +178,9 @@ impl World {
         let p = Perlin::new(1);
         // let mut blocks = [[[None; 64]; 64]; 64];
         let mut blocks = vec![];
-        for x in -32..32 {
-            for y in -32..32 {
-                for z in -32..32 {
+        for x in -64..64 {
+            for y in -64..64 {
+                for z in -64..64 {
                     let val = p.get([x as f64 / 16.0, y as f64 / 16.0, z as f64 / 16.0]);
                     // println!("{val}");
                     if val > 0.0 {

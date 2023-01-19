@@ -69,7 +69,7 @@ impl Eq for Object {}
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy)]
-struct RenderInstance {
+pub struct RenderInstance {
     raw: [f32; 16],
     tex_offset: [f32; 2],
     tex_size: [f32; 2],
@@ -105,7 +105,8 @@ pub struct Renderer {
     camera_bg: wgpu::BindGroup,
     camera_buffer: wgpu::Buffer,
     depth_texture: Texture,
-    objects: FxHashMap<Object, Vec<RenderInstance>>,
+    objects: Vec<Object>,
+    object_instances: Vec<Vec<RenderInstance>>,
     texture_atlas: TextureAtlas,
     textures: FxHashMap<TextureHandle, DynamicImage>,
     texture_atlas_tex: wgpu::Texture,
@@ -337,7 +338,8 @@ impl Renderer {
             indices_length: indices_data.len() as u32,
             camera_buffer,
             depth_texture,
-            objects: FxHashMap::default(),
+            objects: vec![],
+            object_instances: vec![],
             texture_atlas: TextureAtlas::new(),
             textures: FxHashMap::default(),
             texture_atlas_tex,
@@ -820,24 +822,31 @@ impl Renderer {
             });
         object.vertex_buffer = Some(vertices);
         object.index_buffer = Some(indices);
-        self.objects.insert(
-            object,
-            if let Some(instance) = instance {
-                vec![instance]
-            } else {
-                vec![]
-            },
-        );
+        if object.id >= self.objects.len() as u32 {
+            // the object is new
+            self.objects.push(object);
+            self.object_instances.push(vec![instance.unwrap()]);
+        } else {
+            // the object already exists
+            self.object_instances
+                .get_mut(object.id as usize)
+                .unwrap()
+                .push(instance.unwrap());
+        }
+        // self.objects.insert(
+        //     object,
+        //     if let Some(instance) = instance {
+        //         vec![instance]
+        //     } else {
+        //         vec![]
+        //     },
+        // );
     }
 
-    pub fn queue_draw(&mut self, drawable: &impl Drawable, world: &World) {
-        // println!("{}", self.objects.keys().len());
-
+    pub fn queue_draw(&mut self, object_id: u32, drawable: &impl Drawable, world: &World) {
         // compare vertex and index data against what we already have to allow efficient drawing
         // if not existing, register it under a new bucket
-        let v_data: Vec<u8> = bytemuck::cast_slice(&drawable.vertices()).to_vec();
-        let i_data: Vec<u8> = bytemuck::cast_slice(&drawable.indices()).to_vec();
-        let object = self.create_object(v_data, i_data, drawable.indices().len());
+
         let instance = drawable.instance(world);
         let rect = self
             .texture_atlas
@@ -849,11 +858,16 @@ impl Renderer {
             tex_offset: [rect.x as f32, rect.y as f32],
             tex_size: [rect.w as f32, rect.h as f32],
         };
-        if !self.objects.contains_key(&object) {
+
+        if object_id >= self.objects.len() as u32 {
             // register this object
+            let v_data: Vec<u8> = bytemuck::cast_slice(&drawable.vertices()).to_vec();
+            let i_data: Vec<u8> = bytemuck::cast_slice(&drawable.indices()).to_vec();
+            let object = self.create_object(v_data, i_data, drawable.indices().len());
+
             self.register_object(object, Some(render_instance));
         } else {
-            let v = self.objects.get_mut(&object);
+            let v = self.object_instances.get_mut(object_id as usize);
             if let Some(instances) = v {
                 instances.push(render_instance);
             } else {
@@ -869,8 +883,8 @@ impl Renderer {
                     label: Some("Instance buffer"),
                     size: std::mem::size_of::<RenderInstance>() as u64
                         * self
-                            .objects
-                            .values()
+                            .object_instances
+                            .iter()
                             .max_by(|a, b| a.len().cmp(&b.len()))
                             .unwrap()
                             .len() as u64,
@@ -928,7 +942,11 @@ impl Renderer {
         // rpass.draw(0..self.vertices_length, 0..1);
         // rpass.draw_indexed(0..self.indices_length, 0, 0..self.instances_length);
 
-        for (object, instances) in self.objects.iter_mut() {
+        for (object, instances) in self
+            .objects
+            .iter_mut()
+            .zip(self.object_instances.iter_mut())
+        {
             rpass.set_vertex_buffer(0, object.vertex_buffer.as_ref().unwrap().slice(..));
             rpass.set_index_buffer(
                 object.index_buffer.as_ref().unwrap().slice(..),

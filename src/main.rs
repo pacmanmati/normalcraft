@@ -15,6 +15,7 @@ use world::World;
 
 mod camera;
 mod instance;
+mod mesh_instancer;
 mod renderer;
 mod text;
 mod texture;
@@ -33,7 +34,10 @@ fn load_tex(name: &str) -> DynamicImage {
 fn main() {
     env_logger::init();
     let ev = EventLoop::new();
-    let window = WindowBuilder::new().build(&ev).unwrap();
+    let window = WindowBuilder::new()
+        .with_title("normalcraft")
+        .build(&ev)
+        .unwrap();
 
     let aspect_ratio = (window.inner_size().width as f32 / window.inner_size().height as f32);
     println!(
