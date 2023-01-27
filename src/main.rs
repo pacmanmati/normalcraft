@@ -59,14 +59,14 @@ fn main() {
 
     let font_handle = renderer.register_font(font);
 
-    let text_mesh = renderer.create_text_mesh("MNOPQRSTUVWXYZ", font_handle, 0.0, 50.0, 0.5);
-    renderer.queue_draw_text_mesh(text_mesh);
-    let text_mesh = renderer.create_text_mesh("ABCDEFGHIJKL", font_handle, 0.0, 150.0, 0.5);
-    renderer.queue_draw_text_mesh(text_mesh);
-    let text_mesh = renderer.create_text_mesh("mnopqrstuvwxyz", font_handle, 0.0, 250.0, 0.5);
-    renderer.queue_draw_text_mesh(text_mesh);
-    let text_mesh = renderer.create_text_mesh("abcdefghijkl", font_handle, 0.0, 350.0, 0.5);
-    renderer.queue_draw_text_mesh(text_mesh);
+    // let text_mesh = renderer.create_text_mesh("MNOPQRSTUVWXYZ", font_handle, 0.0, 50.0, 0.5);
+    // renderer.queue_draw_text_mesh(text_mesh);
+    // let text_mesh = renderer.create_text_mesh("ABCDEFGHIJKL", font_handle, 0.0, 150.0, 0.5);
+    // renderer.queue_draw_text_mesh(text_mesh);
+    // let text_mesh = renderer.create_text_mesh("mnopqrstuvwxyz", font_handle, 0.0, 250.0, 0.5);
+    // renderer.queue_draw_text_mesh(text_mesh);
+    // let text_mesh = renderer.create_text_mesh("abcdefghijkl", font_handle, 0.0, 350.0, 0.5);
+    // renderer.queue_draw_text_mesh(text_mesh);
 
     let textures = vec![
         ("dirt".into(), load_tex("dirt")),
@@ -187,7 +187,7 @@ struct State {
 impl State {
     pub fn new() -> Self {
         Self {
-            world: World::new(),
+            world: World::new(128, 128, 128, 0.0),
         }
     }
 

@@ -25,6 +25,25 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Release executable 'minecraft'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=minecraft",
+                    "--package=minecraft",
+                    "--release"
+                ],
+                "filter": {
+                    "name": "minecraft",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in executable 'minecraft'",
             "cargo": {
                 "args": [

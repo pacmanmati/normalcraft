@@ -886,8 +886,7 @@ impl Renderer {
                             .object_instances
                             .iter()
                             .max_by(|a, b| a.len().cmp(&b.len()))
-                            .unwrap()
-                            .len() as u64,
+                            .map_or(0, |x| x.len()) as u64,
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 }),

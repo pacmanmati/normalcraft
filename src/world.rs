@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use fxhash::FxHashMap;
 use glam::{vec3, Quat, Vec3};
 use image::DynamicImage;
@@ -168,36 +170,109 @@ impl Drawable for Block {
 
 // the world will consist of blocks and entities
 pub struct World {
-    // pub blocks: [[[Option<Block>; 64]; 64]; 64],
-    pub blocks: Vec<Block>,
+    pub blocks: Vec<Option<Block>>,
     pub textures: FxHashMap<String, TextureHandle>,
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
 }
 
 impl World {
-    pub fn new() -> Self {
+    pub fn flatten_coords(&self, x: usize, y: usize, z: usize) -> usize {
+        x + self.width as usize * (y + z * self.height as usize)
+    }
+
+    pub fn get_block(&self, x: u32, y: u32, z: u32) -> Result<Block, Box<dyn Error>> {
+        if let Some(block) = self
+            .blocks
+            .get(self.flatten_coords(x as usize, y as usize, z as usize))
+        {
+            return block.ok_or("err".into());
+        }
+        Err("".into())
+    }
+
+    pub fn get_block_mut(&mut self, x: u32, y: u32, z: u32) -> Result<&mut Block, Box<dyn Error>> {
+        // let (x, y, z) = self.world_coords_to_unsigned(x, y, z)?;
+        let index = self.flatten_coords(x as usize, y as usize, z as usize);
+        if let Some(block) = self.blocks.get_mut(index) {
+            return block.as_mut().ok_or_else(|| "".into());
+        }
+        Err("".into())
+    }
+
+    pub fn new(width: u32, height: u32, depth: u32, perlin_threshold: f32) -> Self {
         let p = Perlin::new(1);
-        // let mut blocks = [[[None; 64]; 64]; 64];
         let mut blocks = vec![];
-        for x in -64..64 {
-            for y in -64..64 {
-                for z in -64..64 {
+        for x in 0..width {
+            for y in 0..height {
+                for z in 0..depth {
                     let val = p.get([x as f64 / 16.0, y as f64 / 16.0, z as f64 / 16.0]);
-                    // println!("{val}");
-                    if val > 0.0 {
-                        blocks.push(Block {
+                    #[allow(clippy::overly_complex_bool_expr)]
+                    if val > perlin_threshold as f64 {
+                        blocks.push(Some(Block {
                             position: vec3(x as f32, -5. - z as f32, y as f32),
                             rotation: Quat::default(),
                             block_type: BlockType::random(),
-                            visible: false,
-                        });
+                            visible: true,
+                        }));
+                    } else {
+                        blocks.push(None);
                     }
                 }
             }
         }
-        Self {
+
+        let mut this = Self {
             blocks,
             textures: FxHashMap::default(),
+            width,
+            height,
+            depth,
+        };
+
+        this.block_visibility();
+
+        this
+    }
+
+    fn block_visibility(&mut self) -> Result<(), Box<dyn Error>> {
+        // determine which blocks are visible
+        for x in 1..self.width - 1 {
+            for y in 1..self.height - 1 {
+                for z in 1..self.depth - 1 {
+                    if self.get_block(x, y, z).is_ok() {
+                        let left = self.get_block(x - 1, y, z);
+                        let right = self.get_block(x + 1, y, z);
+                        let front = self.get_block(x, y, z + 1);
+                        let back = self.get_block(x, y, z - 1);
+                        let top = self.get_block(x, y + 1, z);
+                        let bottom = self.get_block(x, y - 1, z);
+                        let surrounding_blocks = [left, right, front, back, top, bottom];
+                        if surrounding_blocks.iter().all(|result| result.is_ok()) {
+                            self.get_block_mut(x, y, z).unwrap().visible = false;
+                        }
+                    }
+                }
+            }
         }
+        println!(
+            "invisible blocks {}",
+            self.blocks
+                .iter()
+                .flatten()
+                .filter(|block| !block.visible)
+                .count()
+        );
+        println!(
+            "visible blocks {}",
+            self.blocks
+                .iter()
+                .flatten()
+                .filter(|block| block.visible)
+                .count()
+        );
+        Ok(())
     }
 
     // for each block, check if there's any air blocks next to it
@@ -264,6 +339,74 @@ impl World {
     pub fn draw(&self, renderer: &mut Renderer) {
         self.blocks
             .iter()
+            .flatten()
+            .filter(|block| block.visible)
             .for_each(|block| block.draw(renderer, self));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::World;
+
+    #[test]
+    fn flat_index_test() {
+        let world = World::new(3, 3, 3, -9999.0); // a solid cube
+        let mut counter = 0;
+        for z in 0..3 {
+            for y in 0..3 {
+                for x in 0..3 {
+                    assert!(
+                        world.flatten_coords(x, y, z) == counter,
+                        "{x}, {y}, {z} yielded {} instead of {counter}",
+                        world.flatten_coords(x, y, z)
+                    );
+                    counter += 1;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn interior_blocks_are_invisible() {
+        let world = World::new(3, 3, 3, -9999.0); // a solid cube
+
+        // in a 3x3x3 world we would expect that the middle block is invisible and the rest are visible
+        for (idx, block) in world.blocks.iter().enumerate() {
+            if idx == 13 {
+                assert!(
+                    block.unwrap().visible == false,
+                    "{idx}th block should've been visible"
+                );
+            } else {
+                assert!(
+                    block.unwrap().visible == true,
+                    "{idx}th block should've been invisible"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn interior_blocks_are_invisible_bigger() {
+        let world = World::new(4, 4, 4, -9999.0); // a solid cube
+
+        // in a 3x3x3 world we would expect that the middle block is invisible and the rest are visible
+        for (idx, block) in world.blocks.iter().enumerate() {
+            if vec![21, 22, 25, 26, 37, 38, 41, 42]
+                .iter()
+                .any(|x| *x == idx)
+            {
+                assert!(
+                    !block.unwrap().visible,
+                    "{idx}th block should've been visible"
+                );
+            } else {
+                assert!(
+                    block.unwrap().visible,
+                    "{idx}th block should've been invisible"
+                );
+            }
+        }
     }
 }
